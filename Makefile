@@ -10,6 +10,7 @@ SOURCES = \
 	mod_todotxt.c \
 	todotxt_api.c \
 	todotxt_parser.c \
+	todotxt_patch.c \
 	todotxt_sqlite.c
 
 all:

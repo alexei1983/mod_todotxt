@@ -1,31 +1,35 @@
 LoadModule todotxt_module modules/mod_todotxt.so
 
-# The module is safe to enable only inside a VirtualHost. The SQLite provider
-# is registered globally regardless of where TodoTxtEngine is configured.
-
 <VirtualHost *:443>
     ServerName todo.example.com
 
     TodoTxtEngine On
     TodoTxtBasePath /
-
     TodoTxtStore sqlite:/var/www/vhosts/todo.example.com/private/todotxt.db
 
     TodoTxtAllowAnonymous Off
+    TodoTxtReadOnly Off
 
     TodoTxtDueExtension On
     TodoTxtRecurrenceExtension On
     TodoTxtThresholdExtension On
     TodoTxtCreateNextOnComplete On
 
-    TodoTxtReadOnly Off
+    # v2.0: optionally project the server-side numeric ID into native
+    # todo.txt responses. Default is Off.
+    TodoTxtIdExtension On
+
+    # Exactly one field name. Default is "id" when omitted.
+    # Examples: id, serverid, due, t, rec
+    TodoTxtIdExtensionField id
+
     TodoTxtMaxRequestBytes 1048576
     TodoTxtMaxBatchItems 1000
 
-    # Diagnostic logging retained in this build:
+    # Keep the diagnostic logging used by the 1.2 baseline.
     LogLevel warn todotxt:debug
 
-    <LocationMatch "^/(todo\.txt|todo/)">
+    <LocationMatch "^/(todo\.txt|todos\.json|todo/)">
         AuthType Basic
         AuthName "todo.txt"
         AuthBasicProvider file

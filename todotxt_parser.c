@@ -6,7 +6,7 @@
 #include <time.h>
 #include <stdlib.h>
 
-static int is_date10(const char *s)
+int todotxt_is_date(const char *s)
 {
     return s && strlen(s) == 10 &&
         isdigit((unsigned char)s[0]) &&
@@ -26,6 +26,28 @@ static int is_priority(const char *s)
     return s && strlen(s) == 3 &&
         s[0] == '(' && s[2] == ')' &&
         s[1] >= 'A' && s[1] <= 'Z';
+}
+
+int todotxt_is_recurrence(const char *s)
+{
+    const char *q;
+
+    if (!s || !*s)
+        return 0;
+
+    q = s;
+
+    if (*q == '+')
+        ++q;
+
+    if (!isdigit((unsigned char)*q))
+        return 0;
+
+    while (isdigit((unsigned char)*q))
+        ++q;
+
+    return (*q == 'd' || *q == 'w' || *q == 'm' || *q == 'y') &&
+        q[1] == '\0';
 }
 
 static const char *date_today(apr_pool_t *p, apr_time_t t)
@@ -81,7 +103,7 @@ apr_status_t todotxt_parse_line(
         item->completed = 1;
         tok = apr_strtok(NULL, " \t", &save);
 
-        if (tok && is_date10(tok)) {
+        if (tok && todotxt_is_date(tok)) {
             item->completion_date = apr_pstrdup(p, tok);
             tok = apr_strtok(NULL, " \t", &save);
         }
@@ -92,7 +114,7 @@ apr_status_t todotxt_parse_line(
         tok = apr_strtok(NULL, " \t", &save);
     }
 
-    if (tok && is_date10(tok)) {
+    if (tok && todotxt_is_date(tok)) {
         item->creation_date = apr_pstrdup(p, tok);
         tok = apr_strtok(NULL, " \t", &save);
     }
@@ -105,39 +127,23 @@ apr_status_t todotxt_parse_line(
             append_word(p, &item->contexts, tok + 1);
         }
         else if (conf->enable_due && !strncmp(tok, "due:", 4)) {
-            if (!is_date10(tok + 4)) {
+            if (!todotxt_is_date(tok + 4)) {
                 if (error) *error = "invalid due: date; expected YYYY-MM-DD";
                 return APR_EINVAL;
             }
             item->due_date = apr_pstrdup(p, tok + 4);
         }
         else if (conf->enable_threshold && !strncmp(tok, "t:", 2)) {
-            if (!is_date10(tok + 2)) {
+            if (!todotxt_is_date(tok + 2)) {
                 if (error) *error = "invalid threshold t: date; expected YYYY-MM-DD";
                 return APR_EINVAL;
             }
             item->threshold_date = apr_pstrdup(p, tok + 2);
         }
         else if (conf->enable_rec && !strncmp(tok, "rec:", 4)) {
-            const char *q = tok + 4;
-
-            if (*q == '+')
-                ++q;
-
-            if (!isdigit((unsigned char)*q)) {
-                if (error) *error = "invalid rec: expression";
-                return APR_EINVAL;
-            }
-
-            while (isdigit((unsigned char)*q))
-                ++q;
-
-            if (!(*q == 'd' || *q == 'w' || *q == 'm' || *q == 'y') ||
-                q[1] != '\0') {
-
+            if (!todotxt_is_recurrence(tok + 4)) {
                 if (error)
                     *error = "rec: supports [+]N[d|w|m|y]";
-
                 return APR_EINVAL;
             }
 
@@ -171,7 +177,7 @@ const char *todotxt_complete_line(
 
 static int parse_ymd(const char *s, struct tm *t)
 {
-    if (!is_date10(s))
+    if (!todotxt_is_date(s))
         return 0;
 
     memset(t, 0, sizeof(*t));
@@ -276,7 +282,7 @@ static const char *strip_completion(
 
     line += 2;
 
-    if (is_date10(line) && line[10] == ' ')
+    if (todotxt_is_date(line) && line[10] == ' ')
         line += 11;
 
     return apr_pstrdup(p, line);
@@ -353,4 +359,100 @@ const char *todotxt_recurrence_next_line(
     }
 
     return line;
+}
+
+
+static int digits_only(const char *s)
+{
+    if (!s || !*s)
+        return 0;
+
+    for (; *s; ++s) {
+        if (!isdigit((unsigned char)*s))
+            return 0;
+    }
+
+    return 1;
+}
+
+const char *todotxt_strip_server_id_extension(
+    apr_pool_t *p,
+    const todotxt_server_conf *conf,
+    const char *line)
+{
+    char *copy;
+    char *save = NULL;
+    char *tok;
+    const char *out = "";
+    const char *prefix;
+    size_t prefix_len;
+    int first = 1;
+
+    if (!line)
+        return NULL;
+
+    if (!conf ||
+        !conf->expose_id_extension ||
+        !conf->id_extension_field ||
+        !*conf->id_extension_field) {
+
+        return apr_pstrdup(p, line);
+    }
+
+    prefix = apr_pstrcat(
+        p,
+        conf->id_extension_field,
+        ":",
+        NULL);
+
+    prefix_len = strlen(prefix);
+    copy = apr_pstrdup(p, line);
+
+    for (tok = apr_strtok(copy, " \t", &save);
+         tok;
+         tok = apr_strtok(NULL, " \t", &save)) {
+
+        if (!strncmp(tok, prefix, prefix_len) &&
+            digits_only(tok + prefix_len)) {
+
+            continue;
+        }
+
+        out =
+            first
+                ? apr_pstrdup(p, tok)
+                : apr_pstrcat(p, out, " ", tok, NULL);
+
+        first = 0;
+    }
+
+    return out;
+}
+
+const char *todotxt_render_line(
+    apr_pool_t *p,
+    const todotxt_server_conf *conf,
+    const todotxt_item *item)
+{
+    const char *base;
+
+    if (!item || !item->raw)
+        return "";
+
+    if (!conf || !conf->expose_id_extension)
+        return item->raw;
+
+    base = todotxt_strip_server_id_extension(
+        p,
+        conf,
+        item->raw);
+
+    return apr_psprintf(
+        p,
+        "%s %s:%" APR_INT64_T_FMT,
+        base,
+        conf->id_extension_field
+            ? conf->id_extension_field
+            : "id",
+        item->id);
 }
