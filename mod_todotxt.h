@@ -6,7 +6,7 @@
 #include "apr_tables.h"
 #include "apr_time.h"
 
-#define MOD_TODOTXT_VERSION "2.0.0"
+#define MOD_TODOTXT_VERSION "2.0.1"
 
 typedef struct {
     apr_int64_t id;

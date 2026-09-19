@@ -46,7 +46,7 @@ int todotxt_is_recurrence(const char *s)
     while (isdigit((unsigned char)*q))
         ++q;
 
-    return (*q == 'd' || *q == 'w' || *q == 'm' || *q == 'y') &&
+    return (*q == 'd' || *q == 'b' || *q == 'w' || *q == 'm' || *q == 'y') &&
         q[1] == '\0';
 }
 
@@ -143,7 +143,7 @@ apr_status_t todotxt_parse_line(
         else if (conf->enable_rec && !strncmp(tok, "rec:", 4)) {
             if (!todotxt_is_recurrence(tok + 4)) {
                 if (error)
-                    *error = "rec: supports [+]N[d|w|m|y]";
+                    *error = "rec: supports [+]N[d|b|w|m|y]";
                 return APR_EINVAL;
             }
 
@@ -190,6 +190,37 @@ static int parse_ymd(const char *s, struct tm *t)
     return 1;
 }
 
+
+/*
+ * Add Monday-Friday business days. The base date is not counted.
+ * Holidays are intentionally not modeled.
+ */
+static int add_business_days(struct tm *t, long n)
+{
+    time_t tt;
+
+    while (n-- > 0) {
+        do {
+            t->tm_mday += 1;
+            t->tm_isdst = -1;
+
+            tt = mktime(t);
+            if (tt == (time_t)-1)
+                return 0;
+
+            {
+                struct tm *normalized = localtime(&tt);
+                if (!normalized)
+                    return 0;
+                *t = *normalized;
+            }
+        }
+        while (t->tm_wday == 0 || t->tm_wday == 6);
+    }
+
+    return 1;
+}
+
 static const char *add_interval(
     apr_pool_t *p,
     const char *base,
@@ -218,6 +249,10 @@ static const char *add_interval(
 
     switch (unit) {
         case 'd': t.tm_mday += (int)n; break;
+        case 'b':
+            if (!add_business_days(&t, n))
+                return NULL;
+            break;
         case 'w': t.tm_mday += (int)(n * 7); break;
         case 'm': t.tm_mon  += (int)n; break;
         case 'y': t.tm_year += (int)n; break;
@@ -273,19 +308,76 @@ static const char *replace_extension(
     return out;
 }
 
-static const char *strip_completion(
+/*
+ * Rebuild the active prefix for a generated recurrence.
+ *
+ * The old implementation removed only "x COMPLETION-DATE" and then copied
+ * everything else. If a generated item had already accumulated an extra
+ * leading date, that date became body text and was copied forever. Repeating
+ * that process made the line grow on every completion.
+ *
+ * Canonicalization here removes completion metadata and ALL consecutive
+ * leading structural dates, preserves priority, and then emits at most one
+ * creation date for the new occurrence.
+ */
+static const char *recurrence_active_line(
     apr_pool_t *p,
-    const char *line)
+    const todotxt_item *item,
+    const char *creation_date)
 {
-    if (strncmp(line, "x ", 2))
-        return apr_pstrdup(p, line);
+    char *copy;
+    char *save = NULL;
+    char *tok;
+    const char *out = "";
+    const char *priority = NULL;
+    int first = 1;
 
-    line += 2;
+    if (!item || !item->raw)
+        return NULL;
 
-    if (todotxt_is_date(line) && line[10] == ' ')
-        line += 11;
+    copy = apr_pstrdup(p, item->raw);
+    tok = apr_strtok(copy, " \t", &save);
 
-    return apr_pstrdup(p, line);
+    if (tok && !strcmp(tok, "x")) {
+        tok = apr_strtok(NULL, " \t", &save);
+
+        if (tok && todotxt_is_date(tok))
+            tok = apr_strtok(NULL, " \t", &save);
+    }
+
+    if (tok && is_priority(tok)) {
+        priority = apr_pstrdup(p, tok);
+        tok = apr_strtok(NULL, " \t", &save);
+    }
+
+    /* Also repairs already-corrupted recurring items. */
+    while (tok && todotxt_is_date(tok))
+        tok = apr_strtok(NULL, " \t", &save);
+
+    if (priority) {
+        out = priority;
+        first = 0;
+    }
+
+    /*
+     * If the source task used a creation date, the next occurrence gets
+     * exactly one creation date: the date this recurrence was created.
+     */
+    if (item->creation_date && creation_date) {
+        out = first
+            ? apr_pstrdup(p, creation_date)
+            : apr_pstrcat(p, out, " ", creation_date, NULL);
+        first = 0;
+    }
+
+    for (; tok; tok = apr_strtok(NULL, " \t", &save)) {
+        out = first
+            ? apr_pstrdup(p, tok)
+            : apr_pstrcat(p, out, " ", tok, NULL);
+        first = 0;
+    }
+
+    return out;
 }
 
 const char *todotxt_recurrence_next_line(
@@ -313,7 +405,7 @@ const char *todotxt_recurrence_next_line(
     if (!next_due)
         return NULL;
 
-    line = strip_completion(p, item->raw);
+    line = recurrence_active_line(p, item, nowdate);
 
     if (item->due_date)
         line = replace_extension(p, line, "due:", next_due);

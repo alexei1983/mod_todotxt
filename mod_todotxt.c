@@ -120,7 +120,7 @@ static const command_rec cmds[] = {
     AP_INIT_FLAG("TodoTxtAllowAnonymous", cmd_anon, NULL, RSRC_CONF, "Allow unauthenticated shared anonymous owner"),
     AP_INIT_FLAG("TodoTxtReadOnly", cmd_ro, NULL, RSRC_CONF, "Disable writes"),
     AP_INIT_FLAG("TodoTxtDueExtension", cmd_due, NULL, RSRC_CONF, "Enable due:YYYY-MM-DD"),
-    AP_INIT_FLAG("TodoTxtRecurrenceExtension", cmd_rec, NULL, RSRC_CONF, "Enable rec:[+]N[d|w|m|y]"),
+    AP_INIT_FLAG("TodoTxtRecurrenceExtension", cmd_rec, NULL, RSRC_CONF, "Enable rec:[+]N[d|b|w|m|y]"),
     AP_INIT_FLAG("TodoTxtThresholdExtension", cmd_threshold, NULL, RSRC_CONF, "Enable t:YYYY-MM-DD"),
     AP_INIT_FLAG("TodoTxtCreateNextOnComplete", cmd_next, NULL, RSRC_CONF, "Create next recurring item when completed"),
     AP_INIT_FLAG("TodoTxtIdExtension", cmd_id_extension, NULL, RSRC_CONF, "Expose the server database ID as a todo.txt extension"),

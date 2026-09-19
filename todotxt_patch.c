@@ -224,7 +224,7 @@ apr_status_t todotxt_parse_patch_json(
         return APR_EINVAL;
     }
     if (patch->has_recurrence && patch->recurrence && !todotxt_is_recurrence(patch->recurrence)) {
-        if (error) *error="recurrence must be [+]N[d|w|m|y] or null";
+        if (error) *error="recurrence must be [+]N[d|b|w|m|y] or null";
         return APR_EINVAL;
     }
 

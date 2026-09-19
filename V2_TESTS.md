@@ -4,7 +4,7 @@ Assume:
 
 ```text
 BASE=https://todo.example.com
-AUTH=-u username:password
+AUTH=-u alex:password
 ```
 
 ## Status
@@ -142,3 +142,32 @@ curl -i $AUTH \
   -H 'If-Match: "todo-102-1"' \
   "$BASE/todo/102"
 ```
+
+
+## 2.0.1 recurrence regression tests
+
+Repeatedly complete:
+
+```text
+(A) 2026-09-17 Daily test due:2026-09-17 rec:1d
+```
+
+Every generated active occurrence must have exactly one leading creation date.
+It must never accumulate a prefix such as:
+
+```text
+(A) 2026-09-17 2026-09-18 2026-09-19 Daily test ...
+```
+
+An already-corrupted item with consecutive leading dates should be normalized
+on its next recurrence.
+
+Business-day cases:
+
+```text
+2026-09-18 Friday   + 1b -> 2026-09-21 Monday
+2026-09-19 Saturday + 1b -> 2026-09-21 Monday
+2026-09-21 Monday   + 5b -> 2026-09-28 Monday
+```
+
+Test both `rec:Nb` and strict `rec:+Nb`.

@@ -1,7 +1,38 @@
-# mod_todotxt 2.0.0
+# mod_todotxt 2.0.1
+
+
+## 2.0.1 recurrence fixes
+
+Version 2.0.1 fixes recurring tasks accumulating creation/completion dates.
+The next active occurrence is rebuilt with a canonical todo.txt prefix, so it
+contains at most one creation date. Already-affected tasks with consecutive
+leading dates are cleaned the next time they recur.
+
+Business-day recurrence is also supported:
+
+```text
+rec:1b
+rec:5b
+rec:+1b
+rec:+10b
+```
+
+`b` means Monday-Friday. Saturday and Sunday are skipped; holidays are not.
+The existing `+` strict-recurrence behavior is unchanged: `rec:+Nb` is based
+on the previous due date when one exists, while `rec:Nb` is based on the
+completion date.
+
+Examples:
+
+```text
+Friday   + 1b -> Monday
+Saturday + 1b -> Monday
+Monday   + 5b -> following Monday
+```
+
 
 `mod_todotxt` is an Apache HTTP Server 2.4 module providing a multi-user
-todo.txt service. Version 2.0 is VirtualHost-safe and optionally exposes the server-generated
+todo.txt service. Version 2.0 is VirtualHost-safe and optionally exposes the server-generated 
 ID of each todo.txt item.
 
 ## v2.0 additions
@@ -16,6 +47,8 @@ ID of each todo.txt item.
 - strong ETags
 - `If-Match` optimistic concurrency
 - SQLite schema migration adding an item revision counter
+
+No Jansson dependency is used.
 
 ## Endpoints
 
@@ -146,7 +179,7 @@ Example:
 ```json
 {
   "module": "mod_todotxt",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "user": "alex",
   "anonymous": false,
   "read_only": false,
@@ -164,6 +197,8 @@ Example:
   }
 }
 ```
+
+This is implemented directly by `mod_todotxt`; it does not use `mod_status`.
 
 ## Filtering
 
@@ -416,7 +451,7 @@ The module still supports:
 - contexts `@context`
 - unknown/custom extension preservation
 - `due:YYYY-MM-DD`
-- `rec:[+]N[d|w|m|y]`
+- `rec:[+]N[d|b|w|m|y]`
 - `t:YYYY-MM-DD`
 - recurring next-item creation
 - newline-separated batch POST
@@ -477,6 +512,14 @@ make clean
 make
 make install
 ```
+
+The build retains:
+
+```text
+-g -O0
+```
+
+from the diagnostic baseline.
 
 ## Source layout
 
